@@ -36,8 +36,8 @@ const subscriber = redisClient({
 /**
  * Create HTTPS server.
  */
-var privateKey = fs.readFileSync('./net/privkey.pem', 'utf8');
-var certificate = fs.readFileSync('./net/fullchain.pem', 'utf8');
+var privateKey = fs.readFileSync('./prod/privkey.pem', 'utf8');
+var certificate = fs.readFileSync('./prod/fullchain.pem', 'utf8');
 
 var credentials = { key: privateKey, cert: certificate };
 const server = httpsServer(credentials, app);
