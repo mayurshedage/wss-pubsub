@@ -1,6 +1,6 @@
 /node_modules
 /local
-/com
+/dev
 /prod
 /wss.js
 *.zip

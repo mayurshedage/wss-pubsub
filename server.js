@@ -71,7 +71,7 @@ server.on('listening', onListening);
 const messageHandler = (ws, data) => {
     switch (data.action) {
         case 'ping':
-            ws.send(JSON.stringify({ pong: 1 }));
+            ws.send(JSON.stringify({ pong: new Date().toJSON() }));
             break;
         case 'subscribe':
             rSubscribe(ws, data);
