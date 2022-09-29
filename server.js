@@ -5,41 +5,22 @@
  */
 require('dotenv').config();
 
-const WebSocket = require('ws');
-const redis = require('redis');
+const webSocketServer = require('ws').Server;
+const httpsServer = require('https').createServer;
+const redisClient = require('redis').createClient;
 
 var app = require('./app');
-var http = require('http');
 const fs = require('fs');
-
-var log = function (entry) {
-    fs.appendFileSync('/tmp/sample-app.log', new Date().toISOString() + ' - ' + entry + '\n');
-};
 
 /**
  * Get port from environment and store in Express.
- */
+*/
+var port = normalizePort(8080);
 
-var port = normalizePort(process.env.PORT || '3000');
-
-/**
- * Create HTTP server.
- */
-
-const server = http.createServer(app);
-
-/**
- * Listen on provided port, on all network interfaces.
- */
-
-server.listen(port);
-server.on('error', onError);
-server.on('listening', onListening);
-
-const publisher = redis.createClient({
+const publisher = redisClient({
     'url': process.env.REDIS_PUBSUB
 });
-const subscriber = redis.createClient({
+const subscriber = redisClient({
     'url': process.env.REDIS_PUBSUB
 });
 
@@ -49,13 +30,19 @@ const subscriber = redis.createClient({
         await subscriber.connect();
     } catch (error) {
         console.log(error.message);
-        log(error);
     }
 })();
 
-const wss = new WebSocket.Server({
-    noServer: true
-});
+/**
+ * Create HTTPS server.
+ */
+var privateKey = fs.readFileSync('./net/privkey.pem', 'utf8');
+var certificate = fs.readFileSync('./net/fullchain.pem', 'utf8');
+
+var credentials = { key: privateKey, cert: certificate };
+const server = httpsServer(credentials, app);
+
+var wss = new webSocketServer({ server: server });
 
 wss.addListener('connection', (ws) => {
     ws.addListener('open', () => {
@@ -74,15 +61,15 @@ wss.addListener('connection', (ws) => {
     });
 });
 
-server.on('upgrade', async function upgrade(request, socket, head) {
-    wss.handleUpgrade(request, socket, head, function done(ws) {
-        wss.emit('connection', ws, request)
-    });
-});
-
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
 
 const messageHandler = (ws, data) => {
-    switch (data.type) {
+    switch (data.action) {
         case 'ping':
             ws.send(JSON.stringify({ pong: 1 }));
             break;
