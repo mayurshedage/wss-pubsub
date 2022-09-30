@@ -5,58 +5,43 @@
  */
 require('dotenv').config();
 
-const webSocketServer = require('ws').Server;
+const createWSS = require('ws').Server;
 const httpsServer = require('https').createServer;
-const redisClient = require('redis').createClient;
+const { messageListener } = require('./listener');
 
-var app = require('./app');
+const app = require('./app');
 const fs = require('fs');
 
 /**
  * Get port from environment and store in Express.
 */
-var port = normalizePort(8080);
-
-const publisher = redisClient({
-    'url': process.env.REDIS_PUBSUB
-});
-const subscriber = redisClient({
-    'url': process.env.REDIS_PUBSUB
-});
-
-(async function () {
-    try {
-        await publisher.connect();
-        await subscriber.connect();
-    } catch (error) {
-        console.log(error.message);
-    }
-})();
+const port = normalizePort(process.env.SOCKET_PORT);
 
 /**
  * Create HTTPS server.
  */
-var privateKey = fs.readFileSync('./prod/privkey.pem', 'utf8');
-var certificate = fs.readFileSync('./prod/fullchain.pem', 'utf8');
+const privateKey = fs.readFileSync('./prod/privkey.pem', 'utf8');
+const certificate = fs.readFileSync('./prod/fullchain.pem', 'utf8');
 
-var credentials = { key: privateKey, cert: certificate };
-const server = httpsServer(credentials, app);
+const credentials = { key: privateKey, cert: certificate };
+const sslServer = httpsServer(credentials, app);
 
-var wss = new webSocketServer({ server: server });
+const webSocketServer = new createWSS({ server: sslServer });
 
-wss.addListener('connection', (ws) => {
-    ws.addListener('open', () => {
+webSocketServer.addListener('connection', (socket) => {
+    socket.addListener('open', () => {
         console.log('socket opened');
     });
-    ws.addListener('close', () => {
+    socket.addListener('close', () => {
         console.log('socket closed');
     });
-    ws.addListener('message', async (data) => {
+    socket.addListener('message', async (data) => {
         try {
             data = typeof data === 'object' && JSON.parse(data);
-            if (typeof data === 'object') return messageHandler(ws, data);
+            if (typeof data === 'object') return messageListener(socket, data);
         } catch (error) {
-            ws.send(`Invalid payload`);
+            socket.send(`Invalid payload`);
+            socket.close();
         }
     });
 });
@@ -64,56 +49,9 @@ wss.addListener('connection', (ws) => {
 /**
  * Listen on provided port, on all network interfaces.
  */
-server.listen(port);
-server.on('error', onError);
-server.on('listening', onListening);
-
-const messageHandler = (ws, data) => {
-    switch (data.action) {
-        case 'ping':
-            ws.send(JSON.stringify({ pong: new Date().toJSON() }));
-            break;
-        case 'subscribe':
-            rSubscribe(ws, data);
-            break;
-        case 'publish':
-            rPublish(data);
-            break;
-        case 'unsubscribe':
-            rUnsubscribe(data);
-        default:
-            break;
-    }
-}
-
-const rSubscribe = async (ws, data) => {
-    try {
-        await subscriber.subscribe(data.channel, (content) => {
-            ws.send(content);
-        });
-    } catch (error) {
-        console.error(error.message);
-    }
-}
-
-const rPublish = async (data) => {
-    try {
-        await publisher.publish(
-            data.channel,
-            JSON.stringify(data.message)
-        );
-    } catch (error) {
-        console.error(error.message);
-    }
-}
-
-const rUnsubscribe = async (data) => {
-    try {
-        await subscriber.unsubscribe(data.channel);
-    } catch (error) {
-        console.error(error.message);
-    }
-}
+sslServer.listen(port);
+sslServer.on('error', onError);
+sslServer.on('listening', onListening);
 
 process.on('warning', e => console.warn(e.stack))
 
@@ -170,7 +108,7 @@ function onError(error) {
  */
 
 function onListening() {
-    var addr = server.address();
+    var addr = sslServer.address();
     var bind = typeof addr === 'string'
         ? 'pipe ' + addr
         : 'port ' + addr.port;
