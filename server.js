@@ -7,7 +7,7 @@ require('dotenv').config();
 
 const createWSS = require('ws').Server;
 const httpsServer = require('https').createServer;
-const { messageListener } = require('./listener');
+const { WSListener } = require('./listener');
 
 const app = require('./app');
 const fs = require('fs');
@@ -17,41 +17,35 @@ const fs = require('fs');
 */
 const port = normalizePort(process.env.SOCKET_PORT);
 
-/**
- * Create HTTPS server.
- */
+const cluster = require('cluster');
+const numCores = require('os').cpus().length;
+
 const privateKey = fs.readFileSync('./prod/privkey.pem', 'utf8');
 const certificate = fs.readFileSync('./prod/fullchain.pem', 'utf8');
 
 const credentials = { key: privateKey, cert: certificate };
-const sslServer = httpsServer(credentials, app);
 
-const webSocketServer = new createWSS({ server: sslServer });
+if (cluster.isMaster) {
+    for (let index = 0; index < numCores; index++) {
+        cluster.fork();
+    }
+} else {
+    /**
+     * Create HTTPS server.
+     */
 
-webSocketServer.addListener('connection', (socket) => {
-    socket.addListener('open', () => {
-        console.log('socket opened');
-    });
-    socket.addListener('close', () => {
-        console.log('socket closed');
-    });
-    socket.addListener('message', async (data) => {
-        try {
-            data = typeof data === 'object' && JSON.parse(data);
-            if (typeof data === 'object') return messageListener(socket, data);
-        } catch (error) {
-            socket.send(`Invalid payload`);
-            socket.close();
-        }
-    });
-});
+    var sslServer = httpsServer(credentials, app);
+    var webSocketServer = new createWSS({ server: sslServer });
 
-/**
- * Listen on provided port, on all network interfaces.
- */
-sslServer.listen(port);
-sslServer.on('error', onError);
-sslServer.on('listening', onListening);
+    WSListener(webSocketServer);
+
+    /**
+     * Listen on provided port, on all network interfaces.
+     */
+    sslServer.listen(port);
+    sslServer.on('error', onError);
+    sslServer.on('listening', onListening);
+}
 
 process.on('warning', e => console.warn(e.stack))
 

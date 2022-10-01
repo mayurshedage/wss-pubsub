@@ -18,6 +18,26 @@ const subscriber = redisClient({
     }
 })();
 
+const WSListener = (webSocketServer) => {
+    webSocketServer.addListener('connection', (socket) => {
+        socket.addListener('open', () => {
+            console.log('socket opened');
+        });
+        socket.addListener('close', () => {
+            console.log('socket closed');
+        });
+        socket.addListener('message', async (data) => {
+            try {
+                data = typeof data === 'object' && JSON.parse(data);
+                if (typeof data === 'object') return messageListener(socket, data);
+            } catch (error) {
+                socket.send(`Invalid payload`);
+                socket.close();
+            }
+        });
+    });
+}
+
 const messageListener = (ws, data) => {
     switch (data.action) {
         case 'ping':
@@ -65,4 +85,4 @@ const rUnsubscribe = async (data) => {
     }
 }
 
-module.exports = { messageListener };
+module.exports = { WSListener };
