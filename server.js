@@ -25,27 +25,22 @@ const certificate = fs.readFileSync('./prod/fullchain.pem', 'utf8');
 
 const credentials = { key: privateKey, cert: certificate };
 
-if (cluster.isMaster) {
-    for (let index = 0; index < numCores; index++) {
-        cluster.fork();
-    }
-} else {
-    /**
-     * Create HTTPS server.
-     */
+// if (cluster.isMaster) {} else {}
+/**
+ * Create HTTPS server.
+ */
 
-    var sslServer = httpsServer(credentials, app);
-    var webSocketServer = new createWSS({ server: sslServer });
+const sslServer = httpsServer(credentials, app);
+const webSocketServer = new createWSS({ server: sslServer });
 
-    WSListener(webSocketServer);
+WSListener(webSocketServer);
 
-    /**
-     * Listen on provided port, on all network interfaces.
-     */
-    sslServer.listen(port);
-    sslServer.on('error', onError);
-    sslServer.on('listening', onListening);
-}
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+sslServer.listen(port);
+sslServer.on('error', onError);
+sslServer.on('listening', onListening);
 
 process.on('warning', e => console.warn(e.stack))
 
